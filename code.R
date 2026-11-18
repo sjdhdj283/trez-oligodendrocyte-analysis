@@ -1527,7 +1527,7 @@ sample_scores <- m %>%
 write.csv(sample_scores, file.path(out_dir, "02_stats", "stage_sample_level.csv"), row.names = FALSE)
 
 cols_g <- COL_GROUP[c("HC", "TN")]
-m_long <- m %>%
+m_long <- m %>% 
   dplyr::select(sample, group, all_of(stage_order)) %>%
   tidyr::pivot_longer(cols = all_of(stage_order), names_to = "stage", values_to = "score") %>%
   dplyr::mutate(stage = factor(stage, levels = stage_order), stage_x = as.numeric(stage)); m_long
@@ -1597,10 +1597,104 @@ p_violin <- ggplot2::ggplot(
     legend.key.width  = unit(5, "lines"),
     plot.title = element_text(size = 40, face = "bold", hjust = 0.5),
     plot.subtitle = element_text(size = 35, face = "bold", hjust = 0.5)); p_violin
+p_violin <- ggplot2::ggplot(
+  data = m_long %>% dplyr::filter(score != 0), 
+  mapping = aes(x = group, y = score, fill = group)) + 
+  ggplot2::geom_violin(trim = FALSE, alpha = 0.6, width = 1, linewidth = 1) +
+  ggplot2::geom_boxplot(outlier.shape = NA, width = 0.1, linewidth = 1) +
+  ggplot2::scale_fill_manual(values = c("#5F7FA8", "#C97A74"), name = NULL) +
+  ggpubr::stat_compare_means(
+    comparisons = list(c("HC", "TN")), 
+    method = "wilcox.test", 
+    tip.length = 0.03, 
+    bracket.size = 0.3,
+    label.y = 1.1, 
+    label = "p.signif", # p.format
+    size = 12) +
+  ggplot2::facet_wrap(~ stage , nrow = 1) + 
+  ggplot2::labs(
+    x = "Differentiation stage (early -> late)",
+    y = "UCell score",
+    title = "OL Lineage 5 Stages: HC vs TN",
+    subtitle = "Merged stage-level violin plot;\nP values are descriptive spot-level Wilcoxon tests",
+    fill = NULL) + 
+  ggplot2::coord_cartesian(ylim = c(-0.05, 1.2)) +
+  ggplot2::scale_y_continuous(labels = scales::comma, breaks = seq(0, 1.2, 0.2)) + 
+  ggplot2::theme_classic(base_size = 10) + 
+  ggplot2::theme(
+    panel.grid = element_blank(), 
+    strip.background = element_rect(fill = "#FFFFFFFF", color = "#FFFFFFFF"), 
+    strip.text = element_text(size = 35, face = "bold"),
+    axis.title.x = element_text(size = 30, face = "bold"), 
+    axis.title.y = element_text(size = 30, face = "bold"), 
+    axis.text.x = element_text(size = 25, face = "bold"), 
+    axis.text.y = element_text(size = 25, face = "bold"), 
+    legend.text = element_text(size = 30, face = "bold"),
+    legend.title = element_text(size = 35, face = "bold"), 
+    panel.spacing.x = unit(0, "lines"), 
+    axis.line.x = element_line(linewidth = 1, colour = "black"), 
+    legend.position = "right",
+    legend.key.height = unit(5, "lines"),
+    legend.key.width  = unit(5, "lines"),
+    plot.title = element_text(size = 40, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 35, face = "bold", hjust = 0.5)); p_violin
 ggsave(
   plot = p_violin, 
   filename = "results_OPC_stage/03_plots/p_violin.pdf", 
   width = 35, height = 14, dpi = 300, units = "in", limitsize = FALSE)
+
+head(m, n = 10)
+write.csv(m, file = "Meta.csv", row.names = FALSE, fileEncoding = "UTF-8")
+write.csv(m_long, file = "Mean_SEM_by_Stage_Group_Raw.csv", row.names = FALSE, fileEncoding = "UTF-8")
+
+Cell_Count_Table <- m %>%
+  dplyr::select(group, OPC, COP, NFOL, MFOL, MOL) %>%
+  tidyr::pivot_longer(
+    cols = c(OPC, COP, NFOL, MFOL, MOL),
+    names_to = "stage",
+    values_to = "score") %>%
+  dplyr::group_by(group, stage) %>%
+  dplyr::summarise(
+    n = sum(!is.na(score)),
+    .groups = "drop"); Cell_Count_Table
+Mean_SEM_Table <- m_long %>%
+  dplyr::group_by(stage, group) %>%
+  dplyr::summarise(
+    Mean = mean(score, na.rm = TRUE),
+    SD = sd(score, na.rm = TRUE),
+    # SEM = SD / sqrt(sum(!is.na(score))),
+    SEM = SD / sqrt(sum(score)),
+    .groups = "drop") %>%
+  dplyr::left_join(
+    Cell_Count_Table,
+    by = c("stage", "group")) %>%
+  dplyr::select(stage, group, n, Mean, SD, SEM)
+Mean_SEM_Table
+write.csv(Mean_SEM_Table, file = "Mean_SEM_by_Stage_Group.csv", row.names = FALSE, fileEncoding = "UTF-8")
+
+Cell_Count_Table <- m %>%
+  dplyr::filter(!is.na(dominant_stage)) %>%
+  dplyr::count(group, stage = dominant_stage, name = "n"); Cell_Count_Table
+Mean_SEM_Table <- m_long %>%
+  dplyr::filter(score != 0) %>%
+  dplyr::group_by(stage, group) %>%
+  dplyr::summarise(
+    Mean = mean(score, na.rm = TRUE),
+    SD = sd(score, na.rm = TRUE),
+    SEM = SD / sqrt(sum(!is.na(score))),
+    .groups = "drop") %>%
+  dplyr::left_join(
+    Cell_Count_Table,
+    by = c("stage", "group")) %>%
+  dplyr::select(stage, group, n, Mean, SD, SEM)
+Mean_SEM_Table
+
+Mean_SEM_by_Stage_Group_Raw <- m %>% 
+  tibble::rownames_to_column(var = "barcode") %>% 
+  dplyr::select(barcode, sample, group, all_of(stage_order)) %>%
+  tidyr::pivot_longer(cols = all_of(stage_order), names_to = "stage", values_to = "score") %>%
+  dplyr::mutate(stage = factor(stage, levels = stage_order), stage_x = as.numeric(stage)); Mean_SEM_by_Stage_Group_Raw
+write.csv(Mean_SEM_by_Stage_Group_Raw, file = "Mean_SEM_by_Stage_Group_Raw.csv", row.names = FALSE, fileEncoding = "UTF-8")
 
 dom_comp <- m %>%
   dplyr::group_by(sample, group, dominant_stage) %>%
@@ -1630,10 +1724,9 @@ p_traj <- ggplot2::ggplot(
   ggplot2::scale_fill_manual(values = c("#6B89AEFF", "#93A7BEFF", "#CEC8C1FF", "#D8A19AFF", "#C17970FF" )) +
   ggplot2::theme_bw() +
   ggplot2::labs(
-    y = "Spot-level % (dominant stage per spot)",
+    y = "",
     x = "Group",
-    title = "Spot-level stage classification",
-    subtitle = "Pooled by group; spot-level descriptive") + 
+    title = "Pooled by group; spot-level descriptive") + 
   ggplot2::theme(
     panel.grid = element_blank(), 
     axis.text.y = element_blank(), 
@@ -1654,3 +1747,96 @@ ggsave(
   filename = "results_OPC_stage/03_plots/p_traj.pdf", 
   width = 8, height = 8, dpi = 300, units = "in", limitsize = FALSE)
 saveRDS(obj, file.path(out_dir, "obj_staged.rds"))
+
+
+
+
+
+
+p_violin <- ggplot2::ggplot(
+  data = m_long, 
+  mapping = aes(x = sample, y = score, fill = sample)) + 
+  ggplot2::geom_violin(trim = FALSE, alpha = 0.6, width = 1, linewidth = 1) +
+  ggplot2::geom_boxplot(outlier.shape = NA, width = 0.1, linewidth = 1) +
+  ggplot2::scale_fill_manual(values = c("#5F7FA8", "#C97A74", "#D8A19A", "#C17970"), name = NULL) +
+
+  ggplot2::facet_wrap(~ stage , nrow = 1) + 
+  ggplot2::labs(
+    x = "Differentiation stage (early -> late)",
+    y = "UCell score",
+    title = "OL Lineage 5 Stages: HC vs TN",
+    subtitle = "Merged stage-level violin plot;",
+    fill = NULL) + 
+  ggplot2::coord_cartesian(ylim = c(-0.05, 1.2)) +
+  ggplot2::scale_y_continuous(labels = scales::comma, breaks = seq(0, 1.2, 0.2)) + 
+  ggplot2::theme_classic(base_size = 10) + 
+  ggplot2::theme(
+    panel.grid = element_blank(), 
+    strip.background = element_rect(fill = "#FFFFFFFF", color = "#FFFFFFFF"), 
+    strip.text = element_text(size = 35, face = "bold"),
+    axis.title.x = element_text(size = 30, face = "bold"), 
+    axis.title.y = element_text(size = 30, face = "bold"), 
+    axis.text.x = element_text(size = 25, face = "bold"), 
+    axis.text.y = element_text(size = 25, face = "bold"), 
+    legend.text = element_text(size = 30, face = "bold"),
+    legend.title = element_text(size = 35, face = "bold"), 
+    panel.spacing.x = unit(0, "lines"), 
+    axis.line.x = element_line(linewidth = 1, colour = "black"), 
+    legend.position = "right",
+    legend.key.height = unit(5, "lines"),
+    legend.key.width  = unit(5, "lines"),
+    plot.title = element_text(size = 40, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 35, face = "bold", hjust = 0.5)); p_violin
+
+dom_sample <- dom_comp %>%
+  dplyr::group_by(sample, dominant_stage) %>%
+  dplyr::summarise(n = sum(n), .groups = "drop") %>%
+  dplyr::group_by(sample) %>%
+  dplyr::mutate(pct = 100 * n / sum(n)) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(
+    sample = factor(sample, levels = c("HC", "TN1", "TN2", "TN3")),
+    dominant_stage = factor(dominant_stage, levels = stage_order)); dom_sample
+p_traj_sample <- ggplot2::ggplot(
+  data = dom_sample,
+  mapping = aes(
+    x = sample,
+    y = pct,
+    fill = dominant_stage,
+    stratum = dominant_stage,
+    alluvium = dominant_stage)) +
+  ggplot2::scale_fill_manual(values = c("#6B89AEFF", "#93A7BEFF", "#CEC8C1FF", "#D8A19AFF", "#C17970FF")) +
+  ggplot2::theme_bw() +
+  ggplot2::labs(
+    y = "Spot-level % (dominant stage per spot)",
+    x = "Sample",
+    title = "Sample-level dominant stage composition; descriptive") +
+  ggplot2::theme(
+    panel.grid = element_blank(),
+    axis.title.x = element_text(size = 14, face = "bold"),
+    axis.title.y = element_text(size = 14, face = "bold"),
+    axis.text.x = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 12, face = "bold"),
+    legend.title = element_text(size = 14, face = "bold"),
+    legend.position = "none", 
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12, face = "bold"),
+    legend.key.height = unit(1.5, "lines"),
+    legend.key.width = unit(1.5, "lines")) +
+  ggplot2::geom_col(width = 0.5, color = NA, linewidth = 1) +
+  ggalluvial::geom_flow(width = 0.5, alpha = 0.25, knot.pos = 0.3, color = "#FFFFFFFF", linewidth = 0.5) +
+  ggalluvial::geom_alluvium(width = 0.5, alpha = 1, knot.pos = 0.3, fill = NA, color = "#FFFFFFFF", linewidth = 0.5); p_traj_sample
+p_traj_all <- (p_traj_sample + p_traj) + 
+  plot_layout(widths = c(2, 1)) + 
+  plot_annotation(
+    title = "Spot-level stage classification",
+    theme = theme(plot.title = element_text(size = 18, hjust = 0.5, face = "bold"))); p_traj_all
+ggsave(
+  plot = p_traj_all, 
+  filename = "p_traj_all.pdf", 
+  width = 12, height = 8, dpi = 300, units = "in", limitsize = FALSE)
+ggsave(
+  plot = p_violin, 
+  filename = "p_violin.pdf", 
+  width = 35, height = 14, dpi = 300, units = "in", limitsize = FALSE)
+
